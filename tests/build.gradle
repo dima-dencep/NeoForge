@@ -1,10 +1,14 @@
+import net.neoforged.neodev.NeoDevPlugin
+
 plugins {
     id 'java'
-    id 'net.neoforged.gradle.platform'
+//    id 'net.neoforged.gradle.platform'
     id 'com.diffplug.spotless'
     id 'net.neoforged.licenser'
     id 'neoforge.formatting-conventions'
 }
+
+plugins.getPlugin(NeoDevPlugin).configureExtra(project)
 
 def neoforgeProject = project(':neoforge')
 def testframeworkProject = project(':testframework')
@@ -31,6 +35,12 @@ sourceSets {
 }
 
 configurations {
+    localRuntime {
+        canBeResolved = false
+        canBeConsumed = true
+    }
+    runtimeClasspath.extendsFrom localRuntime
+
     junitImplementation.extendsFrom(implementation)
 }
 
@@ -48,69 +58,84 @@ dependencies {
     compileOnly "org.jetbrains:annotations:${project.jetbrains_annotations_version}"
 }
 
-runs {
-    client {
-        configure neoforgeProject.runTypes.client
-    }
-    junit {
-        configure neoforgeProject.runTypes.junit
-        unitTestSource sourceSets.junit
-    }
-    server {
-        configure neoforgeProject.runTypes.server
-    }
-    gameTestServer {
-        configure neoforgeProject.runTypes.gameTestServer
-    }
-    gameTestClient {
-        configure neoforgeProject.runTypes.gameTestClient
-    }
-    data {
-        configure neoforgeProject.runTypes.data
-
-        programArguments.addAll '--flat', '--all', '--validate',
-                '--mod', 'data_gen_test',
-                '--mod', 'global_loot_test',
-                '--mod', 'scaffolding_test',
-                '--mod', 'custom_tag_types_test',
-                '--mod', 'new_model_loader_test',
-                '--mod', 'remove_tag_datagen_test',
-                '--mod', 'tag_based_tool_types',
-                '--mod', 'custom_transformtype_test',
-                '--mod', 'data_pack_registries_test',
-                '--mod', 'biome_modifiers_test',
-                '--mod', 'structure_modifiers_test',
-                '--mod', 'custom_preset_editor_test',
-                '--mod', 'custom_predicate_test',
-                '--mod', 'neotests',
-                '--existing-mod', 'testframework',
-                '--existing', sourceSets.main.resources.srcDirs[0].absolutePath
-
-        final File gameDir = project.file("runs/${name}") as File
-        gameDir.mkdirs();
-
-        workingDirectory.set gameDir
-        programArguments.addAll '--gameDir', gameDir.absolutePath
+sourceSets {
+    main {
+        // TODO: cursed
+        compileClasspath += project(':neoforge').sourceSets.main.compileClasspath
+        runtimeClasspath += project(':neoforge').sourceSets.main.runtimeClasspath
     }
 }
 
-//We need the assets and natives tasks from the forge project.
-runs.configureEach {
-    dependsOn(neoforgeProject.runtime.assets, neoforgeProject.runtime.natives)
-    modSource neoforgeProject.sourceSets.main
-    modSource testframeworkProject.sourceSets.main
+neoForge {
+    mods {
+        neotests {
+            sourceSet sourceSets.main
+        }
+        testframework {
+            sourceSet project(":testframework").sourceSets.main, project(":testframework")
+        }
+    }
+
+    runs {
+        client {
+            client()
+        }
+//        junit {
+//            configure neoforgeProject.runTypes.junit
+//            unitTestSource sourceSets.junit
+//        }
+        server {
+            server()
+        }
+        gameTestServer {
+            type = "gameTestServer"
+        }
+//        gameTestClient {
+//            configure neoforgeProject.runTypes.gameTestClient
+//        }
+        data {
+            data()
+
+            // TODO: should we copy the config from the neoforge project? (existing resources and stuff)
+
+            programArguments.addAll '--flat', '--all', '--validate',
+                    '--mod', 'data_gen_test',
+                    '--mod', 'global_loot_test',
+                    '--mod', 'scaffolding_test',
+                    '--mod', 'custom_tag_types_test',
+                    '--mod', 'new_model_loader_test',
+                    '--mod', 'remove_tag_datagen_test',
+                    '--mod', 'tag_based_tool_types',
+                    '--mod', 'custom_transformtype_test',
+                    '--mod', 'data_pack_registries_test',
+                    '--mod', 'biome_modifiers_test',
+                    '--mod', 'structure_modifiers_test',
+                    '--mod', 'custom_preset_editor_test',
+                    '--mod', 'custom_predicate_test',
+                    '--mod', 'neotests',
+                    '--existing-mod', 'testframework',
+                    '--existing', sourceSets.main.resources.srcDirs[0].absolutePath
+        }
+    }
+
+    runs.configureEach {
+        // Add NeoForge and Minecraft (bother under the "minecraft" mod).
+        mods.append(neoforgeProject.neoForge.mods.minecraft)
+
+        gameDirectory.set project.file("runs/${it.name}") as File
+    }
+//    runs.junit.modSources.all().get().values().remove(sourceSets.main)
 }
 
-afterEvaluate {
-    runs.data {
-        // Override --output that forge already has
-        def args = new ArrayList<String>(programArguments.get());
-        def outputIndex = args.indexOf('--output');
-        args.set(outputIndex+1, file('src/generated/resources/').absolutePath);
-        programArguments.set(args);
-    }
-    runs.junit.modSources.all().get().values().remove(sourceSets.main)
-}
+//afterEvaluate {
+//    runs.data {
+//        // Override --output that forge already has
+//        def args = new ArrayList<String>(programArguments.get());
+//        def outputIndex = args.indexOf('--output');
+//        args.set(outputIndex+1, file('src/generated/resources/').absolutePath);
+//        programArguments.set(args);
+//    }
+//}
 
 license {
     header = rootProject.file('codeformat/HEADER.txt')
